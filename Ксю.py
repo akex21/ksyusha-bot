@@ -1,5 +1,8 @@
+import os
 import random
+import threading
 from datetime import datetime
+from flask import Flask
 from telebot import TeleBot, types
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -237,7 +240,7 @@ def handle_hug_back(call):
         bot.answer_callback_query(call.id, "Ксюша ещё не запускала бота.")
 
 # -------------------------------------------------------------
-# ЕЖЕДНЕВНАЯ РАССЫЛКА
+# ЕЖЕДНЕВНАЯ РАССЫЛКА И ПЛАНИРОВЩИК
 # -------------------------------------------------------------
 def send_daily_message():
     if ksyusha_chat_id:
@@ -249,6 +252,24 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(send_daily_message, 'cron', hour=10, minute=0, id='daily_wish_job')
 scheduler.start()
 
+# -------------------------------------------------------------
+# ВЕБ-СЕРВЕР ДЛЯ БЕСПЛАТНОГО РАЗВЕРТЫВАНИЯ НА RENDER
+# -------------------------------------------------------------
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Бот работает 24/7!"
+
+def run():
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+threading.Thread(target=run, daemon=True).start()
+
+# -------------------------------------------------------------
+# ЗАПУСК БОТА
+# -------------------------------------------------------------
 if __name__ == '__main__':
     print("Бот успешно запущен!")
     bot.infinity_polling()
