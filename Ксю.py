@@ -1,24 +1,76 @@
 import os
 import random
 import threading
-from datetime import datetime
+from datetime import datetime, date
 from flask import Flask
 from telebot import TeleBot, types
 from apscheduler.schedulers.background import BackgroundScheduler
+from pytz import timezone
 
 # -------------------------------------------------------------
 # НАСТРОЙКИ И ЗАЩИТА
 # -------------------------------------------------------------
 TOKEN = '8682556777:AAEmSYXZyvwcl7ZQ5tmYAFsRRK2XmtMO-0s'
 YOUR_TELEGRAM_ID = 749984711
-KSYUSHA_USERNAME = 'rriritt'  # Юзернейм Ксюши для защиты
+KSYUSHA_USERNAME = 'rriritt'  # Юзернейм Ксюши
+
+# 🗓 Дата начала отношений (11 мая 2026)
+RELATIONSHIP_START_DATE = date(2026, 5, 11)  
 
 bot = TeleBot(TOKEN)
-ksyusha_chat_id = None
-current_wish_time = "10:00"  # Время утренней рассылки по умолчанию
+MSK_TZ = timezone('Europe/Moscow')
+
+CHAT_ID_FILE = "ksyusha_chat_id.txt"
+HUGS_FILE = "hugs_count.txt"
+WISHES_STATE_FILE = "wishes_enabled.txt"
+
+# -------------------------------------------------------------
+# ХРАНЕНИЕ ДАННЫХ
+# -------------------------------------------------------------
+def get_saved_chat_id():
+    if os.path.exists(CHAT_ID_FILE):
+        try:
+            with open(CHAT_ID_FILE, "r") as f:
+                return int(f.read().strip())
+        except Exception:
+            return None
+    return None
+
+def save_chat_id(chat_id):
+    with open(CHAT_ID_FILE, "w") as f:
+        f.write(str(chat_id))
+
+def get_hugs_count():
+    if os.path.exists(HUGS_FILE):
+        try:
+            with open(HUGS_FILE, "r") as f:
+                return int(f.read().strip())
+        except Exception:
+            return 0
+    return 0
+
+def increment_hugs():
+    count = get_hugs_count() + 1
+    with open(HUGS_FILE, "w") as f:
+        f.write(str(count))
+    return count
+
+def is_wishes_enabled():
+    if os.path.exists(WISHES_STATE_FILE):
+        try:
+            with open(WISHES_STATE_FILE, "r") as f:
+                return f.read().strip() == "1"
+        except Exception:
+            return True
+    return True
+
+def set_wishes_enabled(state: bool):
+    with open(WISHES_STATE_FILE, "w") as f:
+        f.write("1" if state else "0")
+
+ksyusha_chat_id = get_saved_chat_id()
 
 def check_access(user):
-    """Проверка прав доступа: разрешено только тебе и Ксюше"""
     if user.id == YOUR_TELEGRAM_ID:
         return True
     if user.username and user.username.lower().replace('@', '') == KSYUSHA_USERNAME.lower():
@@ -26,141 +78,182 @@ def check_access(user):
     return False
 
 # -------------------------------------------------------------
-# 1. 7 УТРЕННИХ ПОЖЕЛАНИЙ НА КАЖДЫЙ ДЕНЬ НЕДЕЛИ
+# БАЗЫ ДАННЫХ
 # -------------------------------------------------------------
 WEEKLY_WISHES = [
     "☀️ *Понедельник:* Пусть эта неделя начинается с твоей лёгкой улыбки! Напоминаю: против твоих зелёных глаз у меня всё так же нет шансов. ❤️",
-    "☀️ *Вторник:* Желаю тебе самого тёплого и уютного дня. Помни, ты — лучшее, что происходит со мной каждый день! ✨",
-    "☀️ *Среда:* Экватор недели! Маленькое напоминание посреди рабочего дня: ты невероятная, любимая и самая лучшая. 🌿",
+    "☀️ *Вторник:* Желаю тебе самого тёплого и уютного дня. Помни, ты - лучшее, что происходит со мной каждый день! ✨",
+    "☀️ *Среда:* Экватор недели! Маленькое напоминание посреди дня: ты невероятная, любимая и самая лучшая. 🌿",
     "☀️ *Четверг:* Пусть сегодняшний день принесёт тебе столько же радости и тепла, сколько ты даришь мне своей улыбкой! 💖",
     "☀️ *Пятница:* Ура, почти выходные! Вспоминаю твой смех и невольно улыбаюсь сам. Хорошего дня, сокровище! 🥰",
     "☀️ *Суббота:* Желаю самых неспешных, умиротворённых и приятных выходных. Наслаждайся каждым мгновением! ✨",
     "☀️ *Воскресенье:* Пусть этот день будет наполнен уютом, отдыхом и любимым чаем. Помни, что я всегда рядом! ❤️"
 ]
 
-# -------------------------------------------------------------
-# 2. БАЗЫ ДАННЫХ КОМПЛИМЕНТОВ И ЦИТАТ
-# -------------------------------------------------------------
 COMPLIMENTS = [
     "Ты делаешь любой, даже самый суматошный день, лёгким и тёплым. ✨",
-    "Вспоминаю твою улыбку — и невольно улыбаюсь сам. ❤️",
+    "Вспоминаю твою улыбку - и невольно улыбаюсь сам. ❤️",
     "Просто напоминаю: ты моя самая большая радость.",
     "Рядом с тобой я чувствую себя по-настоящему дома.",
     "Спасибо за твою нежность и за то, какая ты настоящая.",
-    "Ты — лучшее, что произошло со мной.",
-    "Каждая минута с тобой — это бесценный подарок.",
-    "С тобой хочется делиться всем самым важным и добрым.",
-    "Твой смех — мой любимый звук на свете. 🎶",
-    "У тебя удивительный дар создавать вокруг себя уют и гармонию.",
+    "Ты - лучшее, что произошло со мной.",
+    "Каждая минута с тобой - это бесценный подарок.",
+    "Твой смех - мой любимый звук на свете. 🎶",
     "Ты вдохновляешь меня становиться лучше каждый день.",
-    "Никто не умеет так красиво и искренне радоваться мелочам, как ты.",
-    "Ты сочетаешь в себе невероятную мудрость и детскую трогательность.",
-    "Мне никогда не бывает с тобой скучно или молчаливо невпопад.",
     "Твой взгляд способен исправить абсолютно любой неудачный день. ✨",
-    "Ты прекрасна в любой момент — и спросонья, и в нарядном платье.",
-    "Твоя забота — это самое тёплое одеяло в мире.",
+    "Ты прекрасна в любой момент - и спросонья, и в нарядном платье.",
     "У тебя невероятно доброе и чуткое сердце.",
-    "Ты делаешь этот мир намного красивее просто тем, что ты в нём есть.",
-    "Я обожаю то, как ты задумываешься или искренне чему-то удивляешься.",
-    "С тобой даже простое молчание наполнено смыслом и уютом.",
-    "Ты мой главный источник спокойствия и уверенности.",
-    "Мне так повезло держаться за твою руку.",
-    "Ты — моё самое любимое совпадение в жизни. ❤️",
-    "У тебя самое обаятельное чувство юмора.",
-    "Рядом с тобой даже самый обычный день превращается в маленький праздник.",
-    "Ты умеешь обнимать так, будто все проблемы остаются за дверью.",
-    "Твоя энергия и свет заряжают всё вокруг.",
-    "Я горжусь тобой и всем, что ты делаешь.",
+    "Ты - моё самое любимое совпадение в жизни. ❤️",
     "Просто знай: ты невероятно сильно любима. 💖"
 ]
 
 QUOTES = [
     "«Против твоих зелёных глаз у меня с первого дня нет никаких шансов...» 🌿",
-    "«Самые счастливые моменты — те, что мы проживаем вместе.»",
+    "«Самые счастливые моменты - те, что мы проживаем вместе.»",
     "«Эффект В.З.Г.: Взглянула, Заворожила, Готово! Работает бесперебойно.» ✨",
-    "«Любовь — это когда тихое «я рядом» звучит громче любых слов.»",
-    "«С той самой прогулки в Приморском парке и до сегодня — ты всё так же прекрасна.» 🌲",
-    "«Ты — моё самое любимое воспоминание и лучшее настоящее.»",
-    "«Иногда я просто смотрю на тебя и думаю: как же мне с тобой повезло...» 💭",
-    "«Дом — это не адрес. Дом — это когда ты держишь меня за руку.»",
+    "«С той самой прогулки в Приморском парке и до сегодня - ты всё так же прекрасна.» 🌲",
+    "«Дом - это не адрес. Дом - это когда ты держишь меня за руку.»",
     "«С тобой даже тихий вечер с чаем превращается в лучшее событие недели.» ☕",
-    "«Счастье состоит из мелких деталей, и почти все они связаны с тобой.»",
-    "«В мире может происходить всё что угодно, но твои обнимашки — моя главная пристань.»",
-    "«Любить — значит видеть в одном человеке целый мир. Я свой мир нашёл.» ❤️",
-    "«Ты мой любимый повод улыбнуться телефону среди рабочего дня.»",
-    "«Все самые лучшие дороги в моей жизни всегда ведут к тебе.»",
-    "«Есть люди, с которыми легко. А есть ты — с кем идеально.» ✨",
-    "«Твои зелёные глаза — мой самый любимый оттенок этой жизни.» 🌿",
-    "«Наш уют складывается из твоего смеха и моих взглядов на тебя.»",
-    "«Секрет идеального дня прост: ты, прогулка и горячий напиток.» 🌲",
-    "«Ты — та самая деталь, благодаря которой вся мозаика жизни сложилась.»",
-    "«Быть с тобой — это самое естественное и правильное чувство.»",
-    "«Ты мой вдохновляющий соавтор лучших дней.»",
-    "«Если бы меня попросили описать счастье одним словом, я бы назвал твоё имя.»",
-    "«Вектор моего настроения всегда стремится туда, где находишься ты.» 💖",
-    "«Твой смех способен разогнать любые тучи на горизонте.»",
-    "«Мы можем молчать часами, и это будет самый лучший разговор.»",
-    "«Каждая наша прогулка остаётся в памяти тёплым кадром.» 📸",
-    "«Ты превращаешь любой хаос в душе в полное умиротворение.»",
-    "«Мой любимый маршрут — туда, где ты меня ждёшь.»",
-    "«Ты самое светлое и искреннее, что есть в моём дне.»",
-    "«Просто будь рядом — и всё остальное точно сложится отлично.» ✨"
+    "«Любить - значит видеть в одном человеке целый мир. Я свой мир нашёл.» ❤️",
+    "«Есть люди, с которыми легко. А есть ты - с кем идеально.» ✨",
+    "«Ты - та самая деталь, благодаря которой вся мозаика жизни сложилась.»"
+]
+
+HUG_TYPES = [
+    "крепкое согревающее объятие ☕",
+    "нежное объятие с поцелуем в щёчку 🥰",
+    "уютное объятие со спины 🌿",
+    "самое тёплое медвежье объятие 🧸",
+    "искреннее и долгое объятие ✨"
 ]
 
 # -------------------------------------------------------------
-# КОМАНДА /START И ГЛАВНОЕ МЕНЮ
+# КЛАВИАТУРЫ И МЕНЮ
+# -------------------------------------------------------------
+def get_main_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(
+        types.KeyboardButton("💌 Тёплые слова"),
+        types.KeyboardButton("❤️ Обнимашки"),
+        types.KeyboardButton("💬 Написать Саше"),
+        types.KeyboardButton("⚙️ Настройки и Инфо")
+    )
+    return markup
+
+def get_words_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(
+        types.KeyboardButton("✨ Комплимент"),
+        types.KeyboardButton("📖 Цитата"),
+        types.KeyboardButton("☀️ Пожелание на сегодня"),
+        types.KeyboardButton("🔙 Главное меню")
+    )
+    return markup
+
+def get_hugs_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(
+        types.KeyboardButton("🤗 Обнять Сашу"),
+        types.KeyboardButton("📊 Счётчик объятий"),
+        types.KeyboardButton("🔙 Главное меню")
+    )
+    return markup
+
+def get_settings_keyboard():
+    w_status = "🔔 Рассылка: Включена ✅" if is_wishes_enabled() else "🔕 Рассылка: Выключена ❌"
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(
+        types.KeyboardButton(w_status),
+        types.KeyboardButton("🗓 Сколько дней мы вместе"),
+        types.KeyboardButton("ℹ️ О боте"),
+        types.KeyboardButton("🔙 Главное меню")
+    )
+    return markup
+
+# -------------------------------------------------------------
+# ОБРАБОТКА /START И МЕНЮ
 # -------------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     global ksyusha_chat_id
-    
-    # Защита от чужих
     if not check_access(message.from_user):
         bot.send_message(message.chat.id, "🔒 Извини, это частный бот, созданный только для одного специального человека!")
         return
 
     if message.from_user.id != YOUR_TELEGRAM_ID:
         ksyusha_chat_id = message.chat.id
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn_compliment = types.KeyboardButton("✨ Комплимент")
-    btn_quote = types.KeyboardButton("📖 Романтическая цитата")
-    btn_hug = types.KeyboardButton("❤️ Обнять Сашу")
-    btn_schedule = types.KeyboardButton("⏰ Расписание")
-    
-    markup.add(btn_compliment, btn_quote, btn_hug, btn_schedule)
+        save_chat_id(ksyusha_chat_id)
 
     text = (
         "Привет, Ксюш! 🌿\n\n"
         "Я твой личный бот-помощник и хранитель тёплых слов от Саши.\n"
-        "Здесь ты всегда можешь получить порцию заботы, милую цитату, обнять Сашу или настроить время утренних посланий!"
+        "Выбирай нужный раздел в меню ниже 👇"
     )
-    bot.send_message(message.chat.id, text, reply_markup=markup)
+    bot.send_message(message.chat.id, text, reply_markup=get_main_keyboard())
 
 # -------------------------------------------------------------
-# ОБРАБОТКА МЕНЮ
+# ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ И МОСТА СВЯЗИ
 # -------------------------------------------------------------
-@bot.message_handler(func=lambda message: True)
-def handle_menu(message):
+@bot.message_handler(content_types=['text', 'sticker', 'photo', 'voice', 'video_note', 'document', 'animation'])
+def handle_all_messages(message):
     global ksyusha_chat_id
 
-    # Защита от чужих
     if not check_access(message.from_user):
         bot.send_message(message.chat.id, "🔒 Доступ ограничен.")
         return
 
+    # Сохраняем chat_id Ксюши
     if message.from_user.id != YOUR_TELEGRAM_ID:
-        ksyusha_chat_id = message.chat.id
+        if ksyusha_chat_id != message.chat.id:
+            ksyusha_chat_id = message.chat.id
+            save_chat_id(ksyusha_chat_id)
 
-    if message.text == "✨ Комплимент":
+    # Если САША отвечает на пересланное сообщение от Ксюши
+    if message.from_user.id == YOUR_TELEGRAM_ID and message.reply_to_message:
+        target_id = get_saved_chat_id()
+        if target_id:
+            bot.send_message(target_id, "💬 *Саша ответил тебе:*", parse_mode="Markdown")
+            bot.copy_message(target_id, message.chat.id, message.message_id)
+            bot.send_message(message.chat.id, "Ответ доставлен Ксюше! 📬")
+        return
+
+    # 1. Переходы по главным разделам
+    if message.text == "💌 Тёплые слова":
+        bot.send_message(message.chat.id, "Выбери, что именно ты хочешь прочитать:", reply_markup=get_words_keyboard())
+        return
+
+    elif message.text == "❤️ Обнимашки":
+        bot.send_message(message.chat.id, "Раздел самых тёплых обнимашек 🤗", reply_markup=get_hugs_keyboard())
+        return
+
+    elif message.text == "⚙️ Настройки и Инфо":
+        bot.send_message(message.chat.id, "Настройки и информация:", reply_markup=get_settings_keyboard())
+        return
+
+    elif message.text == "🔙 Главное меню":
+        bot.send_message(message.chat.id, "Возвращаемся в главное меню 🌿", reply_markup=get_main_keyboard())
+        return
+
+    # 2. Подразделы "Тёплые слова"
+    elif message.text == "✨ Комплимент":
         bot.send_message(message.chat.id, f"«{random.choice(COMPLIMENTS)}»")
+        return
 
-    elif message.text == "📖 Романтическая цитата":
+    elif message.text == "📖 Цитата":
         bot.send_message(message.chat.id, f"{random.choice(QUOTES)}")
+        return
 
-    elif message.text == "❤️ Обнять Сашу":
-        bot.send_message(message.chat.id, "Крепкое виртуальное объятие отправлено Саше! 🥰")
-        
+    elif message.text == "☀️ Пожелание на сегодня":
+        day_of_week = datetime.now(MSK_TZ).weekday()
+        bot.send_message(message.chat.id, WEEKLY_WISHES[day_of_week], parse_mode="Markdown")
+        return
+
+    # 3. Подразделы "Обнимашки"
+    elif message.text == "🤗 Обнять Сашу":
+        count = increment_hugs()
+        hug_type = random.choice(HUG_TYPES)
+        bot.send_message(message.chat.id, f"Отправлено {hug_type}! 🥰\n\nЭто ваше *{count}-е* объятие в боте!", parse_mode="Markdown")
+
         if YOUR_TELEGRAM_ID:
             inline_markup = types.InlineKeyboardMarkup()
             btn_hug_back = types.InlineKeyboardButton("Обнять Ксюшу в ответ ❤️", callback_data="hug_back_action")
@@ -168,92 +261,92 @@ def handle_menu(message):
             
             bot.send_message(
                 YOUR_TELEGRAM_ID, 
-                "🔔 *Ксюша только что обняла тебя через бота!*", 
+                f"🔔 *Ксюша только что обняла тебя через бота!*\nФормат: _{hug_type}_\n(Всего объятий: {count})", 
                 reply_markup=inline_markup, 
                 parse_mode="Markdown"
             )
-
-    elif message.text == "⏰ Расписание":
-        show_schedule_menu(message.chat.id)
-
-# -------------------------------------------------------------
-# РАЗДЕЛ «РАСПИСАНИЕ»
-# -------------------------------------------------------------
-def show_schedule_menu(chat_id):
-    inline_markup = types.InlineKeyboardMarkup(row_width=3)
-    times = ["08:00", "09:00", "10:00", "11:00", "12:00", "21:00"]
-    
-    buttons = [types.InlineKeyboardButton(t, callback_data=f"set_time_{t}") for t in times]
-    inline_markup.add(*buttons)
-
-    text = (
-        f"⏰ *Настройка времени утренних посланий*\n\n"
-        f"Сейчас утреннее пожелание приходит в *{current_wish_time}*.\n\n"
-        f"Выбери удобное время ниже, когда тебе приятнее всего получать тёплые слова 👇"
-    )
-    bot.send_message(chat_id, text, reply_markup=inline_markup, parse_mode="Markdown")
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("set_time_"))
-def handle_time_selection(call):
-    if not check_access(call.from_user):
         return
 
-    global current_wish_time
-    selected_time = call.data.replace("set_time_", "")
-    hour, minute = map(int, selected_time.split(":"))
-    
-    current_wish_time = selected_time
+    elif message.text == "📊 Счётчик объятий":
+        count = get_hugs_count()
+        bot.send_message(message.chat.id, f"📊 Вы обнялись через бота уже *{count}* раз! ❤️", parse_mode="Markdown")
+        return
 
-    scheduler.reschedule_job(
-        job_id='daily_wish_job',
-        trigger='cron',
-        hour=hour,
-        minute=minute
-    )
+    # 4. Подразделы "Настройки и Инфо"
+    elif message.text in ["🔔 Рассылка: Включена ✅", "🔕 Рассылка: Выключена ❌"]:
+        current_state = is_wishes_enabled()
+        new_state = not current_state
+        set_wishes_enabled(new_state)
+        status_msg = "включили ✅" if new_state else "поставили на паузу ❌"
+        bot.send_message(message.chat.id, f"Утреннюю рассылку пожеланий {status_msg}.", reply_markup=get_settings_keyboard())
+        return
 
-    bot.answer_callback_query(call.id, f"Время изменено на {selected_time}!")
-    bot.edit_message_text(
-        f"✅ *Время успешно обновлено!*\n\nТеперь утреннее послание от Саши будет приходить каждый день в *{selected_time}* ☀️", 
-        call.message.chat.id, 
-        call.message.message_id, 
-        parse_mode="Markdown"
-    )
+    elif message.text == "🗓 Сколько дней мы вместе":
+        today = date.today()
+        days_together = (today - RELATIONSHIP_START_DATE).days
+        bot.send_message(message.chat.id, f"🗓 Вы вместе уже *{days_together}* дней! ❤️\nИ каждый из них - особенный.", parse_mode="Markdown")
+        return
 
-    if YOUR_TELEGRAM_ID:
+    elif message.text == "ℹ️ О боте":
+        info_text = (
+            "🌿 *О боте*\n\n"
+            "Этот маленький цифровой уголок создан специально для тебя - чтобы ты всегда знала, "
+            "что о тебе помнят, заботятся и любят каждую секунду, где бы мы ни находились.\n\n"
+            "✨ *Что умеет бот:*\n"
+            "☀️ *Утренние послания:* Каждый день ровно в *11:00 по Москве* тебя ждёт новое тёплое пожелание.\n"
+            "💌 *Прямой мост:* Любой твой текст, фото, голосовое сообщение, кружочек или стикер мгновенно прилетают мне в ЛС.\n"
+            "🤗 *Обнимашки:* Когда хочется тепла - нажми кнопку, и я сразу обниму тебя в ответ.\n"
+            "🗓 *Наша история:* Бот бережно хранит и считает каждый день нашего счастья.\n\n"
+            "_Сделано с бесконечной любовью специально для Ксюши._ ❤️"
+        )
+        bot.send_message(message.chat.id, info_text, parse_mode="Markdown")
+        return
+
+    elif message.text == "💬 Написать Саше":
         bot.send_message(
-            YOUR_TELEGRAM_ID, 
-            f"🔔 *Ксюша установила новое время для утренних посланий:* `{selected_time}`", 
+            message.chat.id, 
+            "💌 *Прямая связь с Сашей*\n\nПросто отправь прямо в этот чат любой текст, фото, картинку, голосовое сообщение, кружочек или стикер - и бот моментально перешлёт это Саше!", 
             parse_mode="Markdown"
         )
+        return
+
+    # 5. ПЕРЕСЫЛКА ЛЮБОГО КОНТЕНТА ОТ КСЮШИ САШЕ
+    if message.from_user.id != YOUR_TELEGRAM_ID:
+        bot.send_message(YOUR_TELEGRAM_ID, "💌 *Сообщение от Ксюши:*", parse_mode="Markdown")
+        bot.copy_message(YOUR_TELEGRAM_ID, message.chat.id, message.message_id)
+        bot.send_message(message.chat.id, "Сообщение доставлено Саше! 📬")
 
 # -------------------------------------------------------------
 # ОБРАБОТКА КНОПКИ «ОБНЯТЬ В ОТВЕТ»
 # -------------------------------------------------------------
 @bot.callback_query_handler(func=lambda call: call.data == "hug_back_action")
 def handle_hug_back(call):
-    global ksyusha_chat_id
-    if ksyusha_chat_id:
-        bot.send_message(ksyusha_chat_id, "🥰 *Саша обнял тебя в ответ!*", parse_mode="Markdown")
+    target_id = get_saved_chat_id()
+    if target_id:
+        bot.send_message(target_id, "🥰 *Саша обнял тебя в ответ!*", parse_mode="Markdown")
         bot.answer_callback_query(call.id, "Объятие отправлено Ксюше! ❤️")
         bot.edit_message_text("✅ Ты обнял Ксюшу в ответ!", call.from_user.id, call.message.message_id)
     else:
         bot.answer_callback_query(call.id, "Ксюша ещё не запускала бота.")
 
 # -------------------------------------------------------------
-# ЕЖЕДНЕВНАЯ РАССЫЛКА И ПЛАНИРОВЩИК
+# ЕЖЕДНЕВНАЯ РАССЫЛКА (СТРОГО В 11:00 ПО МОСКВЕ)
 # -------------------------------------------------------------
 def send_daily_message():
-    if ksyusha_chat_id:
-        day_of_week = datetime.now().weekday()
-        wish_text = WEEKLY_WISHES[day_of_week]
-        bot.send_message(ksyusha_chat_id, wish_text, parse_mode="Markdown")
+    if is_wishes_enabled():
+        target_id = get_saved_chat_id()
+        if target_id:
+            day_of_week = datetime.now(MSK_TZ).weekday()
+            wish_text = WEEKLY_WISHES[day_of_week]
+            bot.send_message(target_id, wish_text, parse_mode="Markdown")
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(send_daily_message, 'cron', hour=10, minute=0, id='daily_wish_job')
+scheduler = BackgroundScheduler(timezone=MSK_TZ)
+# Ровно в 11:00 каждый день по МСК
+scheduler.add_job(send_daily_message, 'cron', hour=11, minute=0, id='daily_wish_job')
 scheduler.start()
 
 # -------------------------------------------------------------
-# ВЕБ-СЕРВЕР ДЛЯ БЕСПЛАТНОГО РАЗВЕРТЫВАНИЯ НА RENDER
+# ВЕБ-СЕРВЕР ДЛЯ РАЗВЕРТЫВАНИЯ НА RENDER
 # -------------------------------------------------------------
 app = Flask('')
 
