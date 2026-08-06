@@ -127,6 +127,21 @@ HUG_TYPES = [
     "искреннее и долгое объятие ✨"
 ]
 
+COUPONS = {
+    "c_movie": "🎬 Выбор фильма на вечер без споров",
+    "c_playlist": "🎧 Персональный плейлист от Саши",
+    "c_walk": "🍦 Прогулка по любому твоему маршруту",
+    "c_win": "👑 Королева споров (1 победа без споров)",
+    "c_tea": "☕ Заботливый чай/кофе при встрече"
+}
+
+REACTION_RESPONSES = {
+    "act_hug": "🥰 *Саша крепко обнял тебя в ответ!*",
+    "act_kiss": "😘 *Саша нежно поцеловал тебя в щёчку!*",
+    "act_pat": "💆‍♂️ *Саша заботливо погладил тебя по голове!*",
+    "act_bite": "😼 *Саша любя укусил тебя за щёчку!*"
+}
+
 # -------------------------------------------------------------
 # КЛАВИАТУРЫ И МЕНЮ
 # -------------------------------------------------------------
@@ -135,8 +150,19 @@ def get_main_keyboard():
     markup.add(
         types.KeyboardButton("💌 Тёплые слова"),
         types.KeyboardButton("❤️ Обнимашки"),
+        types.KeyboardButton("🎁 Купоны желаний"),
         types.KeyboardButton("💬 Написать Саше"),
         types.KeyboardButton("⚙️ Настройки и Инфо")
+    )
+    return markup
+
+def get_admin_keyboard():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(
+        types.KeyboardButton("💋 Отправить поцелуй"),
+        types.KeyboardButton("☕ Передать заботу"),
+        types.KeyboardButton("🤗 Обнять в ответ"),
+        types.KeyboardButton("🔙 Главное меню")
     )
     return markup
 
@@ -170,8 +196,14 @@ def get_settings_keyboard():
     )
     return markup
 
+def get_coupons_inline():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    for code, text in COUPONS.items():
+        markup.add(types.InlineKeyboardButton(text, callback_data=f"use_coupon_{code}"))
+    return markup
+
 # -------------------------------------------------------------
-# ОБРАБОТКА /START И МЕНЮ
+# ОБРАБОТКА КОМАНД
 # -------------------------------------------------------------
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -190,6 +222,19 @@ def send_welcome(message):
         "Выбирай нужный раздел в меню ниже 👇"
     )
     bot.send_message(message.chat.id, text, reply_markup=get_main_keyboard())
+
+# СЕКРЕТНАЯ ПАНЕЛЬ САШИ
+@bot.message_handler(commands=['sasha', 'admin'])
+def show_admin_panel(message):
+    if message.from_user.id == YOUR_TELEGRAM_ID:
+        bot.send_message(
+            message.chat.id, 
+            "👑 *Панель управления Саши*\n\nОтсюда ты можешь отправлять мгновенные знаки внимания Ксюше!", 
+            reply_markup=get_admin_keyboard(),
+            parse_mode="Markdown"
+        )
+    else:
+        bot.send_message(message.chat.id, "🔒 Это секретная панель Саши! 🤫")
 
 # -------------------------------------------------------------
 # ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ И МОСТА СВЯЗИ
@@ -217,47 +262,89 @@ def handle_all_messages(message):
             bot.send_message(message.chat.id, "Ответ доставлен Ксюше! 📬")
         return
 
-    # 1. Переходы по главным разделам
-    if message.text == "💌 Тёплые слова":
+    # 1. Секретные действия Саши
+    if message.from_user.id == YOUR_TELEGRAM_ID:
+        target_id = get_saved_chat_id()
+        if message.text == "💋 Отправить поцелуй":
+            if target_id:
+                bot.send_message(target_id, "💋 *Саша только что прислал тебе внезапный поцелуй прямо посреди дня!*", parse_mode="Markdown")
+                bot.send_message(message.chat.id, "Поцелуй успешно доставлен Ксюше! 😘")
+            return
+        elif message.text == "☕ Передать заботу":
+            if target_id:
+                bot.send_message(target_id, "☕ *Саша заботливо передаёт тебе чашку тёплого чая и обнимает!*", parse_mode="Markdown")
+                bot.send_message(message.chat.id, "Забота доставлена! 🥰")
+            return
+        elif message.text == "🤗 Обнять в ответ":
+            if target_id:
+                bot.send_message(target_id, "🥰 *Саша крепко обнял тебя!*", parse_mode="Markdown")
+                bot.send_message(message.chat.id, "Объятие доставлено! ❤️")
+            return
+
+    # 2. Переходы по главным разделам
+    if message.text in ["💌 Тёплые слова"]:
         bot.send_message(message.chat.id, "Выбери, что именно ты хочешь прочитать:", reply_markup=get_words_keyboard())
         return
 
-    elif message.text == "❤️ Обнимашки":
+    elif message.text in ["❤️ Обнимашки"]:
         bot.send_message(message.chat.id, "Раздел самых тёплых обнимашек 🤗", reply_markup=get_hugs_keyboard())
         return
 
-    elif message.text == "⚙️ Настройки и Инфо":
+    elif message.text in ["🎁 Купоны желаний"]:
+        bot.send_message(
+            message.chat.id, 
+            "🎁 *Маленькие купоны желаний*\n\nВыбери купон, который хочешь активировать прямо сейчас, и Саша сразу получит уведомление!", 
+            reply_markup=get_coupons_inline(),
+            parse_mode="Markdown"
+        )
+        return
+
+    elif message.text in ["⚙️ Настройки и Инфо", "⏰ Расписание"]:
         bot.send_message(message.chat.id, "Настройки и информация:", reply_markup=get_settings_keyboard())
         return
 
-    elif message.text == "🔙 Главное меню":
+    elif message.text in ["🔙 Главное меню"]:
         bot.send_message(message.chat.id, "Возвращаемся в главное меню 🌿", reply_markup=get_main_keyboard())
         return
 
-    # 2. Подразделы "Тёплые слова"
-    elif message.text == "✨ Комплимент":
+    # 3. Подразделы "Тёплые слова"
+    elif message.text in ["✨ Комплимент"]:
         bot.send_message(message.chat.id, f"«{random.choice(COMPLIMENTS)}»")
         return
 
-    elif message.text == "📖 Цитата":
+    elif message.text in ["📖 Цитата", "📖 Романтическая цитата"]:
         bot.send_message(message.chat.id, f"{random.choice(QUOTES)}")
         return
 
-    elif message.text == "☀️ Пожелание на сегодня":
+    elif message.text in ["☀️ Пожелание на сегодня"]:
         day_of_week = datetime.now(MSK_TZ).weekday()
         bot.send_message(message.chat.id, WEEKLY_WISHES[day_of_week], parse_mode="Markdown")
         return
 
-    # 3. Подразделы "Обнимашки"
-    elif message.text == "🤗 Обнять Сашу":
+    # 4. Подразделы "Обнимашки" с Ачивкам
+    elif message.text in ["🤗 Обнять Сашу", "❤️ Обнять Сашу"]:
         count = increment_hugs()
         hug_type = random.choice(HUG_TYPES)
         bot.send_message(message.chat.id, f"Отправлено {hug_type}! 🥰\n\nЭто ваше *{count}-е* объятие в боте!", parse_mode="Markdown")
 
+        # Проверка Ачивок
+        achievements = {
+            25: "🧸 *Достижение разблокировано: Новичок-обнимашка (25 объятий)!*",
+            50: "✨ *Достижение разблокировано: Уровень Уютный пледик (50 объятий)!*",
+            100: "❤️ *Достижение разблокировано: Мастера нежности (100 объятий)!*",
+            250: "🔥 *Достижение разблокировано: Профессиональные обнимальщики (250 объятий)!*",
+            500: "🏆 *Достижение разблокировано: Абсолютные рекордсмены любви (500 объятий)!*"
+        }
+        if count in achievements:
+            bot.send_message(message.chat.id, achievements[count], parse_mode="Markdown")
+
         if YOUR_TELEGRAM_ID:
-            inline_markup = types.InlineKeyboardMarkup()
-            btn_hug_back = types.InlineKeyboardButton("Обнять Ксюшу в ответ ❤️", callback_data="hug_back_action")
-            inline_markup.add(btn_hug_back)
+            inline_markup = types.InlineKeyboardMarkup(row_width=2)
+            btn1 = types.InlineKeyboardButton("🥰 Обнять в ответ", callback_data="act_hug")
+            btn2 = types.InlineKeyboardButton("😘 Поцеловать", callback_data="act_kiss")
+            btn3 = types.InlineKeyboardButton("💆‍♂️ Погладить", callback_data="act_pat")
+            btn4 = types.InlineKeyboardButton("😼 Укусить за щёчку", callback_data="act_bite")
+            inline_markup.add(btn1, btn2, btn3, btn4)
             
             bot.send_message(
                 YOUR_TELEGRAM_ID, 
@@ -267,12 +354,12 @@ def handle_all_messages(message):
             )
         return
 
-    elif message.text == "📊 Счётчик объятий":
+    elif message.text in ["📊 Счётчик объятий"]:
         count = get_hugs_count()
         bot.send_message(message.chat.id, f"📊 Вы обнялись через бота уже *{count}* раз! ❤️", parse_mode="Markdown")
         return
 
-    # 4. Подразделы "Настройки и Инфо"
+    # 5. Подразделы "Настройки и Инфо"
     elif message.text in ["🔔 Рассылка: Включена ✅", "🔕 Рассылка: Выключена ❌"]:
         current_state = is_wishes_enabled()
         new_state = not current_state
@@ -281,13 +368,13 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, f"Утреннюю рассылку пожеланий {status_msg}.", reply_markup=get_settings_keyboard())
         return
 
-    elif message.text == "🗓 Сколько дней мы вместе":
+    elif message.text in ["🗓 Сколько дней мы вместе"]:
         today = date.today()
         days_together = (today - RELATIONSHIP_START_DATE).days
         bot.send_message(message.chat.id, f"🗓 Вы вместе уже *{days_together}* дней! ❤️\nИ каждый из них - особенный.", parse_mode="Markdown")
         return
 
-    elif message.text == "ℹ️ О боте":
+    elif message.text in ["ℹ️ О боте"]:
         info_text = (
             "🌿 *О боте*\n\n"
             "Этот маленький цифровой уголок создан специально для тебя - чтобы ты всегда знала, "
@@ -296,13 +383,14 @@ def handle_all_messages(message):
             "☀️ *Утренние послания:* Каждый день ровно в *11:00 по Москве* тебя ждёт новое тёплое пожелание.\n"
             "💌 *Прямой мост:* Любой твой текст, фото, голосовое сообщение, кружочек или стикер мгновенно прилетают мне в ЛС.\n"
             "🤗 *Обнимашки:* Когда хочется тепла - нажми кнопку, и я сразу обниму тебя в ответ.\n"
+            "🎁 *Купоны:* Маленькие приятные желалочки.\n"
             "🗓 *Наша история:* Бот бережно хранит и считает каждый день нашего счастья.\n\n"
             "_Сделано с бесконечной любовью специально для Ксюши._ ❤️"
         )
         bot.send_message(message.chat.id, info_text, parse_mode="Markdown")
         return
 
-    elif message.text == "💬 Написать Саше":
+    elif message.text in ["💬 Написать Саше"]:
         bot.send_message(
             message.chat.id, 
             "💌 *Прямая связь с Сашей*\n\nПросто отправь прямо в этот чат любой текст, фото, картинку, голосовое сообщение, кружочек или стикер - и бот моментально перешлёт это Саше!", 
@@ -310,22 +398,54 @@ def handle_all_messages(message):
         )
         return
 
-    # 5. ПЕРЕСЫЛКА ЛЮБОГО КОНТЕНТА ОТ КСЮШИ САШЕ
+    # 6. ПЕРЕСЫЛКА ЛЮБОГО ДРУГОГО КОНТЕНТА ОТ КСЮШИ САШЕ
     if message.from_user.id != YOUR_TELEGRAM_ID:
         bot.send_message(YOUR_TELEGRAM_ID, "💌 *Сообщение от Ксюши:*", parse_mode="Markdown")
         bot.copy_message(YOUR_TELEGRAM_ID, message.chat.id, message.message_id)
         bot.send_message(message.chat.id, "Сообщение доставлено Саше! 📬")
 
 # -------------------------------------------------------------
-# ОБРАБОТКА КНОПКИ «ОБНЯТЬ В ОТВЕТ»
+# ОБРАБОТКА ИНТЕРАКТИВНЫХ КНОПОК
 # -------------------------------------------------------------
-@bot.callback_query_handler(func=lambda call: call.data == "hug_back_action")
-def handle_hug_back(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("use_coupon_"))
+def handle_coupon_activation(call):
+    coupon_code = call.data.replace("use_coupon_", "")
+    coupon_name = COUPONS.get(coupon_code, "Неизвестный купон")
+    
+    bot.answer_callback_query(call.id, "Купон активирован!")
+    bot.send_message(call.message.chat.id, f"✅ Ты активировала купон:\n*{coupon_name}*\n\nСаша уже получил уведомление! ❤️", parse_mode="Markdown")
+
+    if YOUR_TELEGRAM_ID:
+        inline_markup = types.InlineKeyboardMarkup()
+        btn_accept = types.InlineKeyboardButton("Принять в работу ✅", callback_data="accept_coupon_action")
+        inline_markup.add(btn_accept)
+
+        bot.send_message(
+            YOUR_TELEGRAM_ID,
+            f"🎁 *Ксюша активировала купон!*\n\nНазвание: _{coupon_name}_",
+            reply_markup=inline_markup,
+            parse_mode="Markdown"
+        )
+
+@bot.callback_query_handler(func=lambda call: call.data == "accept_coupon_action")
+def handle_accept_coupon(call):
     target_id = get_saved_chat_id()
     if target_id:
-        bot.send_message(target_id, "🥰 *Саша обнял тебя в ответ!*", parse_mode="Markdown")
-        bot.answer_callback_query(call.id, "Объятие отправлено Ксюше! ❤️")
-        bot.edit_message_text("✅ Ты обнял Ксюшу в ответ!", call.from_user.id, call.message.message_id)
+        bot.send_message(target_id, "🥰 *Саша принял твой купон в работу!*", parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Уведомление отправлено Ксюше!")
+        bot.edit_message_text("✅ Ты принял купон!", call.from_user.id, call.message.message_id)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("act_"))
+def handle_hug_reactions(call):
+    target_id = get_saved_chat_id()
+    text_to_send = REACTION_RESPONSES.get(call.data, "🥰 *Саша передаёт тебе тёплый привет!*")
+
+    if target_id:
+        bot.send_message(target_id, text_to_send, parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Реакция отправлена Ксюше!")
+        
+        clean_text = text_to_send.replace("*", "")
+        bot.edit_message_text(f"✅ Ты ответил: {clean_text}", call.from_user.id, call.message.message_id)
     else:
         bot.answer_callback_query(call.id, "Ксюша ещё не запускала бота.")
 
@@ -341,7 +461,6 @@ def send_daily_message():
             bot.send_message(target_id, wish_text, parse_mode="Markdown")
 
 scheduler = BackgroundScheduler(timezone=MSK_TZ)
-# Ровно в 11:00 каждый день по МСК
 scheduler.add_job(send_daily_message, 'cron', hour=11, minute=0, id='daily_wish_job')
 scheduler.start()
 
@@ -363,6 +482,9 @@ threading.Thread(target=run, daemon=True).start()
 # -------------------------------------------------------------
 # ЗАПУСК БОТА
 # -------------------------------------------------------------
+if __name__ == '__main__':
+    print("Бот успешно запущен!")
+    bot.infinity_polling()
 if __name__ == '__main__':
     print("Бот успешно запущен!")
     bot.infinity_polling()
