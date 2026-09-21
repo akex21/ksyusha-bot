@@ -612,11 +612,14 @@ def handle_all_messages(message):
     if text == "⚙️ Настройки и Инфо":
         bot.send_message(message.chat.id, "Настройки и информация:", reply_markup=get_settings_keyboard())
         return
-    if text == "🔙 Главное меню":
-        user_states.pop(user_id, None)
-        keyboard = get_admin_keyboard() if user_id == YOUR_TELEGRAM_ID else get_main_keyboard()
-        bot.send_message(message.chat.id, "Возвращаемся в главное меню 🌿", reply_markup=keyboard)
-        return
+   if text == "🔙 Главное меню":
+    user_states.pop(user_id, None)
+    bot.send_message(
+        message.chat.id,
+        "Возвращаемся в главное меню 🌿",
+        reply_markup=get_main_keyboard(),
+    )
+    return
 
     # Тёплые слова.
     if text == "✨ Комплимент":
