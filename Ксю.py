@@ -6,11 +6,12 @@ from datetime import datetime, date
 
 from flask import Flask
 from telebot import TeleBot, types
+from telebot.apihelper import ApiTelegramException
 from apscheduler.schedulers.background import BackgroundScheduler
 from pytz import timezone
 
 # -------------------------------------------------------------
-# НАСТРОЙКИ
+# НАСТРОЙКИ И БЕЗОПАСНОСТЬ
 # -------------------------------------------------------------
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
@@ -28,7 +29,6 @@ HUGS_FILE = "hugs_count.txt"
 WISHES_STATE_FILE = "wishes_enabled.txt"
 BOT_DATA_FILE = "bot_data.json"
 
-# Состояния пользователей в памяти
 user_states = {}
 
 # -------------------------------------------------------------
@@ -111,10 +111,12 @@ ksyusha_chat_id = get_saved_chat_id()
 def check_access(user):
     if user.id == YOUR_TELEGRAM_ID:
         return True
-    return bool(
-        user.username
-        and user.username.lower().replace("@", "") == KSYUSHA_USERNAME.lower()
-    )
+    if user.username and user.username.lower().replace("@", "") == KSYUSHA_USERNAME.lower():
+        return True
+    saved_id = get_saved_chat_id()
+    if saved_id and user.id == saved_id:
+        return True
+    return False
 
 
 def get_ksyusha_chat_id():
@@ -127,7 +129,7 @@ def current_author_name(user):
     return "Ксюша"
 
 # -------------------------------------------------------------
-# ТЕКСТЫ
+# БАЗЫ ТЕКСТОВ
 # -------------------------------------------------------------
 COMPLIMENTS = [
     "Ты делаешь любой, даже самый суматошный день, лёгким и тёплым. ✨",
@@ -228,86 +230,62 @@ REACTION_RESPONSES = {
 # КЛАВИАТУРЫ
 # -------------------------------------------------------------
 def get_main_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(
-        types.KeyboardButton("💌 Тёплые слова"),
-        types.KeyboardButton("❤️ Обнимашки"),
-        types.KeyboardButton("🎁 Купоны желаний"),
-        types.KeyboardButton("🖼 Наши воспоминания"),
-        types.KeyboardButton("💬 Написать Саше"),
-        types.KeyboardButton("⚙️ Настройки и Инфо"),
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(types.KeyboardButton("💌 Тёплые слова"), types.KeyboardButton("❤️ Обнимашки"))
+    markup.row(types.KeyboardButton("🎁 Купоны желаний"), types.KeyboardButton("🖼 Наши воспоминания"))
+    markup.row(types.KeyboardButton("💬 Написать Саше"), types.KeyboardButton("⚙️ Настройки и Инфо"))
     return markup
 
 
 def get_admin_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(
-        types.KeyboardButton("📤 Отправить Ксюше"),
-        types.KeyboardButton("🖼 Наши воспоминания"),
-        types.KeyboardButton("💋 Отправить поцелуй"),
-        types.KeyboardButton("☕ Передать заботу"),
-        types.KeyboardButton("🤗 Обнять в ответ"),
-        types.KeyboardButton("🔙 Главное меню"),
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(types.KeyboardButton("📤 Отправить Ксюше"), types.KeyboardButton("🖼 Наши воспоминания"))
+    markup.row(types.KeyboardButton("💋 Отправить поцелуй"), types.KeyboardButton("☕ Передать заботу"))
+    markup.row(types.KeyboardButton("🤗 Обнять в ответ"), types.KeyboardButton("🔙 Главное меню"))
     return markup
 
 
 def get_words_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(
-        types.KeyboardButton("✨ Комплимент"),
-        types.KeyboardButton("📖 Цитата"),
-        types.KeyboardButton("☀️ Пожелание на сегодня"),
-        types.KeyboardButton("🔙 Главное меню"),
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(types.KeyboardButton("✨ Комплимент"), types.KeyboardButton("📖 Цитата"))
+    markup.row(types.KeyboardButton("☀️ Пожелание на сегодня"))
+    markup.row(types.KeyboardButton("🔙 Главное меню"))
     return markup
 
 
 def get_hugs_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(
-        types.KeyboardButton("🤗 Обнять Сашу"),
-        types.KeyboardButton("📊 Счётчик объятий"),
-        types.KeyboardButton("🔙 Главное меню"),
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(types.KeyboardButton("🤗 Обнять Сашу"), types.KeyboardButton("📊 Счётчик объятий"))
+    markup.row(types.KeyboardButton("🔙 Главное меню"))
     return markup
 
 
 def get_settings_keyboard():
     status = "🔔 Рассылка: Включена ✅" if is_wishes_enabled() else "🔕 Рассылка: Выключена ❌"
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(
-        types.KeyboardButton(status),
-        types.KeyboardButton("🗓 Сколько дней мы вместе"),
-        types.KeyboardButton("ℹ️ О боте"),
-        types.KeyboardButton("🔙 Главное меню"),
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(types.KeyboardButton(status))
+    markup.row(types.KeyboardButton("🗓 Сколько дней мы вместе"), types.KeyboardButton("ℹ️ О боте"))
+    markup.row(types.KeyboardButton("🔙 Главное меню"))
     return markup
 
 
 def get_memories_keyboard():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    markup.add(
-        types.KeyboardButton("📸➕ Добавить воспоминание"),
-        types.KeyboardButton("📚 Смотреть воспоминания"),
-        types.KeyboardButton("🔙 Главное меню"),
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row(types.KeyboardButton("📸➕ Добавить воспоминание"), types.KeyboardButton("📚 Смотреть воспоминания"))
+    markup.row(types.KeyboardButton("🔙 Главное меню"))
     return markup
 
 
 def get_cancel_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(types.KeyboardButton("✖️ Отмена"))
+    markup.row(types.KeyboardButton("✖️ Отмена"))
     return markup
 
 
 def get_skip_caption_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add(
-        types.KeyboardButton("⏭ Без подписи"),
-        types.KeyboardButton("✖️ Отмена"),
-    )
+    markup.row(types.KeyboardButton("⏭ Без подписи"))
+    markup.row(types.KeyboardButton("✖️ Отмена"))
     return markup
 
 
@@ -322,12 +300,12 @@ def get_memory_inline(index, total):
     markup = types.InlineKeyboardMarkup(row_width=3)
     previous_index = (index - 1) % total
     next_index = (index + 1) % total
-    markup.add(
+    markup.row(
         types.InlineKeyboardButton("⬅️", callback_data=f"memory_show_{previous_index}"),
         types.InlineKeyboardButton(f"{index + 1} / {total}", callback_data="memory_noop"),
         types.InlineKeyboardButton("➡️", callback_data=f"memory_show_{next_index}"),
     )
-    markup.add(
+    markup.row(
         types.InlineKeyboardButton("🗑 Удалить", callback_data=f"memory_delete_{index}"),
         types.InlineKeyboardButton("🔙 Закрыть", callback_data="memory_close"),
     )
@@ -340,7 +318,7 @@ def send_memory(chat_id, index):
     data = load_bot_data()
     memories = data["memories"]
     if not memories:
-        bot.send_message(chat_id, "📭 Пока нет ни одного воспоминания.")
+        bot.send_message(chat_id, "📭 Пока нет ни одного воспоминания.", reply_markup=get_memories_keyboard())
         return
 
     index %= len(memories)
@@ -409,18 +387,21 @@ def forward_from_sasha(message):
 def send_welcome(message):
     global ksyusha_chat_id
     if not check_access(message.from_user):
-        bot.send_message(message.chat.id, "🔒 Извини, это частный бот.")
+        bot.send_message(message.chat.id, "🔒 Извини, это частный бот, созданный только для одного специального человека!")
         return
+
+    user_states.pop(message.from_user.id, None)
 
     if message.from_user.id != YOUR_TELEGRAM_ID:
         ksyusha_chat_id = message.chat.id
         save_chat_id(ksyusha_chat_id)
 
-    bot.send_message(
-        message.chat.id,
-        "Привет, Ксюш! 🌿\n\nЯ хранитель тёплых слов, наших воспоминаний и маленьких знаков внимания от Саши.\nВыбирай нужный раздел в меню ниже 👇",
-        reply_markup=get_main_keyboard(),
+    text = (
+        "Привет, Ксюш! 🌿\n\n"
+        "Я хранитель тёплых слов, наших воспоминаний и маленьких знаков внимания от Саши.\n"
+        "Выбирай нужный раздел в меню ниже 👇"
     )
+    bot.send_message(message.chat.id, text, reply_markup=get_main_keyboard())
 
 
 @bot.message_handler(commands=["sasha", "admin"])
@@ -437,7 +418,7 @@ def show_admin_panel(message):
     )
 
 # -------------------------------------------------------------
-# ОСНОВНОЙ ОБРАБОТЧИК
+# ОСНОВНОЙ ОБРАБОТЧИК СООБЩЕНИЙ
 # -------------------------------------------------------------
 @bot.message_handler(content_types=["text", "sticker", "photo", "voice", "video_note", "document", "animation", "video"])
 def handle_all_messages(message):
@@ -461,11 +442,13 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, "Действие отменено.", reply_markup=keyboard)
         return
 
+    # 1. Режим отправки от Саши
     if user_id == YOUR_TELEGRAM_ID and state.get("mode") == "send_to_ksyusha":
         forward_from_sasha(message)
         user_states.pop(user_id, None)
         return
 
+    # 2. Добавление медиа в воспоминания
     if state.get("mode") == "memory_media":
         if message.photo:
             file_id = message.photo[-1].file_id
@@ -514,6 +497,7 @@ def handle_all_messages(message):
             )
         return
 
+    # 3. Подпись к воспоминанию
     if state.get("mode") == "memory_caption":
         if not text:
             bot.send_message(message.chat.id, "Напиши подпись текстом или выбери «⏭ Без подписи».")
@@ -527,6 +511,7 @@ def handle_all_messages(message):
         )
         return
 
+    # 4. Ответ Саши на пересланное сообщение через Reply
     if user_id == YOUR_TELEGRAM_ID and message.reply_to_message:
         target_id = get_ksyusha_chat_id()
         if target_id:
@@ -537,6 +522,7 @@ def handle_all_messages(message):
             bot.send_message(message.chat.id, "⚠️ Не удалось найти чат Ксюши.")
         return
 
+    # 5. Кнопки панели управления Саши
     if user_id == YOUR_TELEGRAM_ID:
         if text == "📤 Отправить Ксюше":
             if not get_ksyusha_chat_id():
@@ -568,6 +554,7 @@ def handle_all_messages(message):
                 bot.send_message(message.chat.id, "Объятие доставлено! ❤️")
             return
 
+    # 6. Основные разделы меню (для обоих)
     if text == "💌 Тёплые слова":
         bot.send_message(message.chat.id, "Выбери, что именно ты хочешь прочитать:", reply_markup=get_words_keyboard())
         return
@@ -610,6 +597,7 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, "Возвращаемся в главное меню 🌿", reply_markup=keyboard)
         return
 
+    # 7. Подраздел Тёплые слова
     if text == "✨ Комплимент":
         bot.send_message(message.chat.id, f"«{random.choice(COMPLIMENTS)}»")
         return
@@ -620,6 +608,7 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, choose_daily_wish())
         return
 
+    # 8. Подраздел Обнимашки
     if text in ["🤗 Обнять Сашу", "❤️ Обнять Сашу"]:
         count = increment_hugs()
         hug_type = random.choice(HUG_TYPES)
@@ -656,6 +645,7 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, f"📊 Вы обнялись через бота уже *{get_hugs_count()}* раз! ❤️", parse_mode="Markdown")
         return
 
+    # 9. Подраздел Настройки и Инфо
     if text in ["🔔 Рассылка: Включена ✅", "🔕 Рассылка: Выключена ❌"]:
         new_state = not is_wishes_enabled()
         set_wishes_enabled(new_state)
@@ -693,6 +683,7 @@ def handle_all_messages(message):
         )
         return
 
+    # 10. Прямой мост: любой другой контент от Ксюши пересылается Саше
     if user_id != YOUR_TELEGRAM_ID:
         bot.send_message(YOUR_TELEGRAM_ID, "💌 *Сообщение от Ксюши:*", parse_mode="Markdown")
         bot.copy_message(YOUR_TELEGRAM_ID, message.chat.id, message.message_id)
@@ -795,7 +786,7 @@ def handle_memory_delete(call):
     bot.answer_callback_query(call.id, "Воспоминание удалено.")
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
-    except Exception:
+    except ApiTelegramException:
         pass
     bot.send_message(
         call.message.chat.id,
@@ -812,7 +803,7 @@ def handle_memory_close(call):
     bot.answer_callback_query(call.id)
     try:
         bot.delete_message(call.message.chat.id, call.message.message_id)
-    except Exception:
+    except ApiTelegramException:
         pass
     bot.send_message(call.message.chat.id, "Галерея закрыта 🌿", reply_markup=get_memories_keyboard())
 
