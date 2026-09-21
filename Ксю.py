@@ -12,7 +12,6 @@ from pytz import timezone
 # -------------------------------------------------------------
 # НАСТРОЙКИ
 # -------------------------------------------------------------
-# В Render задайте переменную окружения BOT_TOKEN.
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise RuntimeError("Не задан BOT_TOKEN. Добавьте его в Environment Variables на Render.")
@@ -29,7 +28,7 @@ HUGS_FILE = "hugs_count.txt"
 WISHES_STATE_FILE = "wishes_enabled.txt"
 BOT_DATA_FILE = "bot_data.json"
 
-# Состояния действуют только в памяти до выполнения действия.
+# Состояния пользователей в памяти
 user_states = {}
 
 # -------------------------------------------------------------
@@ -244,13 +243,13 @@ def get_main_keyboard():
 def get_admin_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
-    types.KeyboardButton("📤 Отправить Ксюше"),
-    types.KeyboardButton("🖼 Наши воспоминания"),
-    types.KeyboardButton("💋 Отправить поцелуй"),
-    types.KeyboardButton("☕ Передать заботу"),
-    types.KeyboardButton("🤗 Обнять в ответ"),
-    types.KeyboardButton("🔙 Главное меню"),
-)
+        types.KeyboardButton("📤 Отправить Ксюше"),
+        types.KeyboardButton("🖼 Наши воспоминания"),
+        types.KeyboardButton("💋 Отправить поцелуй"),
+        types.KeyboardButton("☕ Передать заботу"),
+        types.KeyboardButton("🤗 Обнять в ответ"),
+        types.KeyboardButton("🔙 Главное меню"),
+    )
     return markup
 
 
@@ -462,13 +461,11 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, "Действие отменено.", reply_markup=keyboard)
         return
 
-    # Режим отправки от Саши: следующее любое сообщение уйдёт Ксюше.
     if user_id == YOUR_TELEGRAM_ID and state.get("mode") == "send_to_ksyusha":
         forward_from_sasha(message)
         user_states.pop(user_id, None)
         return
 
-    # Ожидание фото или видео для нового воспоминания.
     if state.get("mode") == "memory_media":
         if message.photo:
             file_id = message.photo[-1].file_id
@@ -484,7 +481,6 @@ def handle_all_messages(message):
             )
             return
 
-        # Подпись, добавленная непосредственно к фото/видео, сохраняется сразу.
         if message.caption:
             user_states[user_id] = {
                 "mode": "memory_caption",
@@ -518,7 +514,6 @@ def handle_all_messages(message):
             )
         return
 
-    # Ожидание подписи к новому воспоминанию.
     if state.get("mode") == "memory_caption":
         if not text:
             bot.send_message(message.chat.id, "Напиши подпись текстом или выбери «⏭ Без подписи».")
@@ -532,7 +527,6 @@ def handle_all_messages(message):
         )
         return
 
-    # Ответ Саши на пересланное от Ксюши сообщение.
     if user_id == YOUR_TELEGRAM_ID and message.reply_to_message:
         target_id = get_ksyusha_chat_id()
         if target_id:
@@ -543,7 +537,6 @@ def handle_all_messages(message):
             bot.send_message(message.chat.id, "⚠️ Не удалось найти чат Ксюши.")
         return
 
-    # Панель Саши.
     if user_id == YOUR_TELEGRAM_ID:
         if text == "📤 Отправить Ксюше":
             if not get_ksyusha_chat_id():
@@ -575,7 +568,6 @@ def handle_all_messages(message):
                 bot.send_message(message.chat.id, "Объятие доставлено! ❤️")
             return
 
-    # Главное меню и разделы.
     if text == "💌 Тёплые слова":
         bot.send_message(message.chat.id, "Выбери, что именно ты хочешь прочитать:", reply_markup=get_words_keyboard())
         return
@@ -612,16 +604,12 @@ def handle_all_messages(message):
     if text == "⚙️ Настройки и Инфо":
         bot.send_message(message.chat.id, "Настройки и информация:", reply_markup=get_settings_keyboard())
         return
-       if text == "🔙 Главное меню":
+    if text == "🔙 Главное меню":
         user_states.pop(user_id, None)
-        bot.send_message(
-            message.chat.id,
-            "Возвращаемся в главное меню 🌿",
-            reply_markup=get_main_keyboard(),
-        )
+        keyboard = get_main_keyboard()
+        bot.send_message(message.chat.id, "Возвращаемся в главное меню 🌿", reply_markup=keyboard)
         return
 
-    # Тёплые слова.
     if text == "✨ Комплимент":
         bot.send_message(message.chat.id, f"«{random.choice(COMPLIMENTS)}»")
         return
@@ -632,7 +620,6 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, choose_daily_wish())
         return
 
-    # Обнимашки.
     if text in ["🤗 Обнять Сашу", "❤️ Обнять Сашу"]:
         count = increment_hugs()
         hug_type = random.choice(HUG_TYPES)
@@ -669,7 +656,6 @@ def handle_all_messages(message):
         bot.send_message(message.chat.id, f"📊 Вы обнялись через бота уже *{get_hugs_count()}* раз! ❤️", parse_mode="Markdown")
         return
 
-    # Настройки.
     if text in ["🔔 Рассылка: Включена ✅", "🔕 Рассылка: Выключена ❌"]:
         new_state = not is_wishes_enabled()
         set_wishes_enabled(new_state)
@@ -707,7 +693,6 @@ def handle_all_messages(message):
         )
         return
 
-    # Пересылка обычного контента от Ксюши Саше.
     if user_id != YOUR_TELEGRAM_ID:
         bot.send_message(YOUR_TELEGRAM_ID, "💌 *Сообщение от Ксюши:*", parse_mode="Markdown")
         bot.copy_message(YOUR_TELEGRAM_ID, message.chat.id, message.message_id)
@@ -832,7 +817,7 @@ def handle_memory_close(call):
     bot.send_message(call.message.chat.id, "Галерея закрыта 🌿", reply_markup=get_memories_keyboard())
 
 # -------------------------------------------------------------
-# ЕЖЕДНЕВНАЯ РАССЫЛКА: 11:00 ПО МОСКВЕ
+# ЕЖЕДНЕВНАЯ РАССЫЛКА
 # -------------------------------------------------------------
 def send_daily_message():
     if not is_wishes_enabled():
@@ -871,5 +856,7 @@ def run_web_server():
 
 if __name__ == "__main__":
     threading.Thread(target=run_web_server, daemon=True).start()
+    print("Бот успешно запущен!")
+    bot.infinity_polling(skip_pending=True)
     print("Бот успешно запущен!")
     bot.infinity_polling(skip_pending=True)
