@@ -244,12 +244,13 @@ def get_main_keyboard():
 def get_admin_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
-        types.KeyboardButton("📤 Отправить Ксюше"),
-        types.KeyboardButton("💋 Отправить поцелуй"),
-        types.KeyboardButton("☕ Передать заботу"),
-        types.KeyboardButton("🤗 Обнять в ответ"),
-        types.KeyboardButton("🔙 Главное меню"),
-    )
+    types.KeyboardButton("📤 Отправить Ксюше"),
+    types.KeyboardButton("🖼 Наши воспоминания"),
+    types.KeyboardButton("💋 Отправить поцелуй"),
+    types.KeyboardButton("☕ Передать заботу"),
+    types.KeyboardButton("🤗 Обнять в ответ"),
+    types.KeyboardButton("🔙 Главное меню"),
+)
     return markup
 
 
